@@ -10,11 +10,16 @@ func main()  {
   done := make(chan os.Signal, 1)
   signal.Notify(done, os.Interrupt)
 
-  wsManager := NewWebSocketManager()
-  defer wsManager.Close()
+  wsManagerFetch := NewWebSocketManager()
+  wsManagerAnalyze := NewWebSocketManager()
+  defer wsManagerFetch.Close()
+  defer wsManagerAnalyze.Close()
 
-  go wsManager.fetchNewTokens()
-  go wsManager.analyzeTokenTrades()
+  update := make(chan struct{}, 1)
+  addressBook := NewAddressBook()
+
+  go wsManagerFetch.fetchNewTokens(update, addressBook)
+  go wsManagerAnalyze.analyzeTokenTrades(update, addressBook)
 
   <-done
   log.Println("Closing WebSocket connections")

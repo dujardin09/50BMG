@@ -3,9 +3,33 @@ package main
 import(
 	"encoding/json"
   "log"
+  "sync"
 )
 
-func (wsm *WebSocketManager) fetchNewTokens() {
+type AddressBook struct {
+	mu       sync.RWMutex
+	addresses []string
+}
+
+func NewAddressBook() *AddressBook {
+	return &AddressBook{
+		addresses: make([]string, 0),
+	}
+}
+
+func (ab *AddressBook) Add(address string) {
+	ab.mu.Lock()
+	defer ab.mu.Unlock()
+	ab.addresses = append(ab.addresses, address)
+}
+
+func (ab *AddressBook) GetAll() []string {
+	ab.mu.RLock()
+	defer ab.mu.RUnlock()
+	return append([]string(nil), ab.addresses...) // copy
+}
+
+func (wsm *WebSocketManager) fetchNewTokens(update chan struct {}, ab *AddressBook) {
   if err := wsm.subscribe("subscribeNewToken"); err != nil {
     log.Printf("subscribeNewToken failed: %v", err)
     return
@@ -38,19 +62,31 @@ func (wsm *WebSocketManager) fetchNewTokens() {
 
     if solAmount >= 3 && vSolInBondingCurve >= 15 && marketCapSol < 40 {
       log.Printf("%s\n", mint)
+      ab.Add(mint)
+      select {
+      case update <- struct{}{}:
+      default:
+      }
     }
   }
 }
 
-func (wsm *WebSocketManager) analyzeTokenTrades() {
-  if err := wsm.subscribe("subscribeTokenTrade"); err != nil {
-    log.Printf("Trade subscription failed: %v", err)
+func (wsm *WebSocketManager) analyzeTokenTrades(update chan struct {}, ab *AddressBook) {
+  for {
+    select {
+    case <- update:
+      log.Printf("Nouvelle address :%v", ab.GetAll())
+    default:
+    }
   }
-
-  message, err := wsm.readMessage()
-  if err != nil {
-    log.Printf("Read error: %v", err)
-  } else {
-      log.Printf("%s\n", message)
-  }
+  // if err := wsm.subscribe("subscribeTokenTrade"); err != nil {
+  //   log.Printf("Trade subscription failed: %v", err)
+  // }
+  //
+  // message, err := wsm.readMessage()
+  // if err != nil {
+  //   log.Printf("Read error: %v", err)
+  // } else {
+  //     log.Printf("%s\n", message)
+  // }
 }
